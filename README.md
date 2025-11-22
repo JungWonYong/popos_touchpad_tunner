@@ -65,3 +65,7 @@ python3 touchpad_tuner.py
 ## License
 
 MIT License
+
+## Credits
+
+This project was created with the assistance of **Google DeepMind's Gemini Antigravity**.
