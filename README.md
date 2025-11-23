@@ -1,8 +1,8 @@
-# Touchpad Tuner (Linux Touchpad Optimizer)
+# Pop!_OS Multitouch Tuner
 
 A comprehensive GUI tool for fine-tuning touchpad sensitivity, acceleration, and gestures on Linux (specifically optimized for GNOME/Pop!_OS).
 
-![Touchpad Tuner](icon.png)
+![Pop!_OS Multitouch Tuner](icon.png)
 
 ## Features
 
@@ -25,8 +25,8 @@ A comprehensive GUI tool for fine-tuning touchpad sensitivity, acceleration, and
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/YOUR_USERNAME/touchpad-tuner.git
-    cd touchpad-tuner
+    git clone https://github.com/YOUR_USERNAME/popos-multitouch-tuner.git
+    cd popos-multitouch-tuner
     ```
 
 2.  **Install Python dependencies**:
@@ -44,15 +44,15 @@ A comprehensive GUI tool for fine-tuning touchpad sensitivity, acceleration, and
     
     Run the following command to install the sudoers configuration:
     ```bash
-    sudo cp touchpad_tuner_sudoers /etc/sudoers.d/touchpad_tuner
-    sudo chmod 0440 /etc/sudoers.d/touchpad_tuner
+    sudo cp popos_multitouch_tuner_sudoers /etc/sudoers.d/popos_multitouch_tuner
+    sudo chmod 0440 /etc/sudoers.d/popos_multitouch_tuner
     ```
 
 ## Usage
 
 Run the application:
 ```bash
-python3 touchpad_tuner.py
+python3 popos_multitouch_tuner.py
 ```
 
 -   **Pointer Speed**: Adjusts the standard pointer speed.

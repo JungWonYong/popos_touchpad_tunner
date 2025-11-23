@@ -10,11 +10,65 @@ from PIL import Image, ImageDraw
 import pystray
 import json
 
+TRANSLATIONS = {
+    'en': {
+        'title': "Pop!_OS Multitouch Tuner",
+        'speed_frame': "Pointer Speed",
+        'profile_frame': "Acceleration Profile",
+        'ctm_frame': "1-Finger Sensitivity",
+        'daemon_frame': "Dynamic 3-Finger Sensitivity",
+        'enable_daemon': "Enable Dynamic Adjustment",
+        'gesture_multiplier': "3-Finger Multiplier",
+        'autostart': "Start on Login",
+        'daemon_running': "Daemon Status: Running",
+        'daemon_stopped': "Daemon Status: Stopped",
+        'note': "Note: Daemon requires sudo (passwordless or cached).",
+        'error_device': "Touchpad device not found!",
+        'error_config': "Error loading config: {}",
+        'error_save': "Error saving config: {}",
+        'language': "Language"
+    },
+    'ja': {
+        'title': "Pop!_OS マルチタッチチューナー",
+        'speed_frame': "ポインタ速度 (Pointer Speed)",
+        'profile_frame': "加速プロファイル (Acceleration)",
+        'ctm_frame': "1本指の感度 (Sensitivity)",
+        'daemon_frame': "3本指の動的感度 (Dynamic Sensitivity)",
+        'enable_daemon': "動的調整を有効にする",
+        'gesture_multiplier': "3本指の倍率 (Multiplier)",
+        'autostart': "ログイン時に自動起動",
+        'daemon_running': "デーモン状態: 実行中",
+        'daemon_stopped': "デーモン状態: 停止中",
+        'note': "注: デーモンにはsudo権限が必要です。",
+        'error_device': "タッチパッドが見つかりません！",
+        'error_config': "設定の読み込みエラー: {}",
+        'error_save': "設定の保存エラー: {}",
+        'language': "言語 (Language)"
+    },
+    'ko': {
+        'title': "Pop!_OS 멀티터치 튜너",
+        'speed_frame': "포인터 속도 (Pointer Speed)",
+        'profile_frame': "가속 프로필 (Acceleration)",
+        'ctm_frame': "1손가락 감도 (Sensitivity)",
+        'daemon_frame': "3손가락 동적 감도 (Dynamic Sensitivity)",
+        'enable_daemon': "동적 조정 활성화",
+        'gesture_multiplier': "3손가락 배율 (Multiplier)",
+        'autostart': "로그인 시 자동 시작",
+        'daemon_running': "데몬 상태: 실행 중",
+        'daemon_stopped': "데몬 상태: 정지됨",
+        'note': "참고: 데몬 실행을 위해 sudo 권한이 필요합니다.",
+        'error_device': "터치패드 장치를 찾을 수 없습니다!",
+        'error_config': "설정 로드 오류: {}",
+        'error_save': "설정 저장 오류: {}",
+        'language': "언어 (Language)"
+    }
+}
+
 class TouchpadTuner:
     def __init__(self, root):
         self.root = root
-        self.root.title("Touchpad Tuner (터치패드 정밀 조정)")
-        self.root.geometry("500x650")
+        # Title will be set in update_ui_text
+        self.root.geometry("500x700")
         
         # Handle window close to minimize to tray
         self.root.protocol('WM_DELETE_WINDOW', self.minimize_to_tray)
@@ -25,10 +79,10 @@ class TouchpadTuner:
             self.root.destroy()
             return
 
-        self.config_dir = os.path.expanduser("~/.config/touchpad_tuner")
+        self.config_dir = os.path.expanduser("~/.config/popos_multitouch_tuner")
         self.config_path = os.path.join(self.config_dir, "config.json")
         self.touchegg_conf_path = os.path.expanduser("~/.config/touchegg/touchegg.conf")
-        self.autostart_path = os.path.expanduser("~/.config/autostart/touchpad_tuner.desktop")
+        self.autostart_path = os.path.expanduser("~/.config/autostart/popos_multitouch_tuner.desktop")
         
         # Load config or defaults
         self.load_config()
@@ -53,12 +107,14 @@ class TouchpadTuner:
         elif self.daemon_enabled:
             self.start_daemon()
 
+
     def load_config(self):
         # Defaults
         self.current_profile = 'adaptive'
         self.current_normal_ctm = 1.0
         self.current_gesture_ctm = 0.4
         self.daemon_enabled = True
+        self.current_language = 'en'
         
         if os.path.exists(self.config_path):
             try:
@@ -68,6 +124,7 @@ class TouchpadTuner:
                     self.current_normal_ctm = config.get('normal_ctm', 1.0)
                     self.current_gesture_ctm = config.get('gesture_ctm', 0.4)
                     self.daemon_enabled = config.get('daemon_enabled', True)
+                    self.current_language = config.get('language', 'en')
                 print("Config loaded.")
             except Exception as e:
                 print(f"Error loading config: {e}")
@@ -87,7 +144,8 @@ class TouchpadTuner:
             'profile': self.profile_var.get(),
             'normal_ctm': self.ctm_scale.get(),
             'gesture_ctm': self.gesture_ctm_scale.get(),
-            'daemon_enabled': self.daemon_var.get()
+            'daemon_enabled': self.daemon_var.get(),
+            'language': self.language_var.get()
         }
         
         try:
@@ -211,7 +269,7 @@ class TouchpadTuner:
             pystray.MenuItem('Quit', self.quit_app)
         )
         
-        self.icon = pystray.Icon("touchpad_tuner", image, "Touchpad Tuner", menu)
+        self.icon = pystray.Icon("popos_multitouch_tuner", image, "Pop!_OS Multitouch Tuner", menu)
         
         # Run icon in separate thread to not block tkinter
         threading.Thread(target=self.icon.run, daemon=True).start()
@@ -261,7 +319,7 @@ Exec=python3 {script_path} --minimized
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-Name=Touchpad Tuner
+Name=Pop!_OS Multitouch Tuner
 Comment=Touchpad sensitivity and gesture tuner
 """
         try:
@@ -478,89 +536,125 @@ Comment=Touchpad sensitivity and gesture tuner
         if self.daemon_var.get():
             self.start_daemon()
 
-    def create_widgets(self):
-        # Initialize status label first to avoid AttributeError
-        frame_daemon_dummy = ttk.Frame(self.root) # Temporary holder if needed, but better to just create the label later?
-        # Actually, let's just create the variable and label at the end, 
-        # but ensure callbacks don't run until everything is ready.
-        
-        # Speed Control
-        frame_speed = ttk.LabelFrame(self.root, text="Pointer Speed (기본 마우스 감도)")
-        frame_speed.pack(pady=5, padx=10, fill="x")
+    def get_text(self, key):
+        lang = self.language_var.get() if hasattr(self, 'language_var') else self.current_language
+        return TRANSLATIONS.get(lang, TRANSLATIONS['en']).get(key, key)
 
-        self.speed_label = ttk.Label(frame_speed, text=f"Speed: {self.current_speed:.2f}")
+    def update_ui_text(self, event=None):
+        self.root.title(self.get_text('title'))
+        self.frame_speed.config(text=self.get_text('speed_frame'))
+        self.frame_profile.config(text=self.get_text('profile_frame'))
+        self.frame_ctm.config(text=self.get_text('ctm_frame'))
+        self.frame_daemon.config(text=self.get_text('daemon_frame'))
+        self.chk_daemon.config(text=self.get_text('enable_daemon'))
+        self.lbl_g_ctm.config(text=self.get_text('gesture_multiplier'))
+        self.chk_autostart.config(text=self.get_text('autostart'))
+        self.lbl_info.config(text=self.get_text('note'))
+        self.lbl_lang.config(text=self.get_text('language'))
+        
+        # Update status label text based on current state
+        if self.daemon_process:
+            self.status_label.config(text=self.get_text('daemon_running'))
+        else:
+            self.status_label.config(text=self.get_text('daemon_stopped'))
+            
+        # Save config when language changes
+        if event:
+            self.save_config()
+
+    def create_widgets(self):
+        # Language Selection
+        frame_lang = ttk.Frame(self.root)
+        frame_lang.pack(pady=5, padx=10, fill="x")
+        
+        self.lbl_lang = ttk.Label(frame_lang, text="Language")
+        self.lbl_lang.pack(side="left", padx=5)
+        
+        self.language_var = tk.StringVar(value=self.current_language)
+        lang_combo = ttk.Combobox(frame_lang, textvariable=self.language_var, values=['en', 'ja', 'ko'], state="readonly", width=5)
+        lang_combo.pack(side="left")
+        lang_combo.bind("<<ComboboxSelected>>", self.update_ui_text)
+
+        # Speed Control
+        self.frame_speed = ttk.LabelFrame(self.root, text="")
+        self.frame_speed.pack(pady=5, padx=10, fill="x")
+
+        self.speed_label = ttk.Label(self.frame_speed, text=f"Speed: {self.current_speed:.2f}")
         self.speed_label.pack()
 
         self.speed_scale = ttk.Scale(
-            frame_speed, from_=-1.0, to=1.0, orient='horizontal',
+            self.frame_speed, from_=-1.0, to=1.0, orient='horizontal',
             command=self.set_speed
         )
         self.speed_scale.set(self.current_speed)
         self.speed_scale.pack(fill="x", padx=10, pady=2)
 
         # Profile Control
-        frame_profile = ttk.LabelFrame(self.root, text="Acceleration Profile (가속도)")
-        frame_profile.pack(pady=5, padx=10, fill="x")
+        self.frame_profile = ttk.LabelFrame(self.root, text="")
+        self.frame_profile.pack(pady=5, padx=10, fill="x")
 
         self.profile_var = tk.StringVar(value=self.current_profile)
         
         rb_adaptive = ttk.Radiobutton(
-            frame_profile, text="Adaptive", 
+            self.frame_profile, text="Adaptive", 
             variable=self.profile_var, value='adaptive', command=self.set_profile
         )
         rb_adaptive.pack(anchor='w', padx=10)
 
         rb_flat = ttk.Radiobutton(
-            frame_profile, text="Flat", 
+            self.frame_profile, text="Flat", 
             variable=self.profile_var, value='flat', command=self.set_profile
         )
         rb_flat.pack(anchor='w', padx=10)
 
         # CTM Control (Global Sensitivity)
-        frame_ctm = ttk.LabelFrame(self.root, text="1-Finger Sensitivity (기본 감도 배율)")
-        frame_ctm.pack(pady=5, padx=10, fill="x")
+        self.frame_ctm = ttk.LabelFrame(self.root, text="")
+        self.frame_ctm.pack(pady=5, padx=10, fill="x")
         
-        self.ctm_label = ttk.Label(frame_ctm, text="Multiplier: 1.00")
+        self.ctm_label = ttk.Label(self.frame_ctm, text="Multiplier: 1.00")
         self.ctm_label.pack()
         
         self.ctm_scale = ttk.Scale(
-            frame_ctm, from_=0.1, to=3.0, orient='horizontal',
+            self.frame_ctm, from_=0.1, to=3.0, orient='horizontal',
             command=self.set_ctm
         )
         self.ctm_scale.set(self.current_normal_ctm)
         self.ctm_scale.pack(fill="x", padx=10, pady=2)
 
         # Dynamic Sensitivity Daemon
-        frame_daemon = ttk.LabelFrame(self.root, text="Dynamic 3-Finger Sensitivity (3손가락 감도 분리)")
-        frame_daemon.pack(pady=5, padx=10, fill="x")
+        self.frame_daemon = ttk.LabelFrame(self.root, text="")
+        self.frame_daemon.pack(pady=5, padx=10, fill="x")
         
         # Create status label FIRST in this frame
-        self.status_label = ttk.Label(frame_daemon, text="Daemon Status: Stopped", foreground="red")
+        self.status_label = ttk.Label(self.frame_daemon, text="", foreground="red")
         self.status_label.pack(side='bottom', pady=2)
 
         self.daemon_var = tk.BooleanVar(value=self.daemon_enabled)
-        chk_daemon = ttk.Checkbutton(frame_daemon, text="Enable Dynamic Adjustment (동적 조정 활성화)", 
+        self.chk_daemon = ttk.Checkbutton(self.frame_daemon, text="", 
                                      variable=self.daemon_var, command=self.toggle_daemon)
-        chk_daemon.pack(anchor='w', padx=10, pady=2)
+        self.chk_daemon.pack(anchor='w', padx=10, pady=2)
         
-        lbl_g_ctm = ttk.Label(frame_daemon, text="3-Finger Multiplier (3손가락 시 배율)")
-        lbl_g_ctm.pack(anchor='w', padx=10)
+        self.lbl_g_ctm = ttk.Label(self.frame_daemon, text="")
+        self.lbl_g_ctm.pack(anchor='w', padx=10)
         
         # Use a wrapper for command to check if initialization is done
-        self.gesture_ctm_scale = ttk.Scale(frame_daemon, from_=0.1, to=2.0, orient='horizontal', 
+        self.gesture_ctm_scale = ttk.Scale(self.frame_daemon, from_=0.1, to=2.0, orient='horizontal', 
                                            command=lambda v: self.on_gesture_scale_change(v))
         self.gesture_ctm_scale.set(self.current_gesture_ctm)
         self.gesture_ctm_scale.pack(fill="x", padx=10, pady=2)
         
         # Autostart
         self.autostart_var = tk.BooleanVar(value=os.path.exists(self.autostart_path))
-        chk_autostart = ttk.Checkbutton(frame_daemon, text="Start on Login (로그인 시 자동 시작)", 
+        self.chk_autostart = ttk.Checkbutton(self.frame_daemon, text="", 
                                         variable=self.autostart_var, command=self.toggle_autostart)
-        chk_autostart.pack(anchor='w', padx=10, pady=5)
+        self.chk_autostart.pack(anchor='w', padx=10, pady=5)
 
         # Info
-        lbl_info = ttk.Label(self.root, text="Note: Daemon requires sudo (passwordless or cached).", font=("Arial", 8), foreground="gray")
-        lbl_info.pack(side="bottom", pady=2)
+        self.lbl_info = ttk.Label(self.root, text="", font=("Arial", 8), foreground="gray")
+        self.lbl_info.pack(side="bottom", pady=2)
+        
+        # Initial text update
+        self.update_ui_text()
 
     def on_gesture_scale_change(self, val):
         # Only restart if fully initialized
