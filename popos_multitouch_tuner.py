@@ -15,6 +15,7 @@ TRANSLATIONS = {
         'title': "Pop!_OS Multitouch Tuner",
         'speed_frame': "Pointer Speed",
         'profile_frame': "Acceleration Profile",
+        'scroll_frame': "Two-Finger Scroll Speed",
         'ctm_frame': "1-Finger Sensitivity",
         'daemon_frame': "Dynamic 3-Finger Sensitivity",
         'enable_daemon': "Enable Dynamic Adjustment",
@@ -32,6 +33,7 @@ TRANSLATIONS = {
         'title': "Pop!_OS マルチタッチチューナー",
         'speed_frame': "ポインタ速度 (Pointer Speed)",
         'profile_frame': "加速プロファイル (Acceleration)",
+        'scroll_frame': "2本指スクロール速度 (Scroll Speed)",
         'ctm_frame': "1本指の感度 (Sensitivity)",
         'daemon_frame': "3本指の動的感度 (Dynamic Sensitivity)",
         'enable_daemon': "動的調整を有効にする",
@@ -49,6 +51,7 @@ TRANSLATIONS = {
         'title': "Pop!_OS 멀티터치 튜너",
         'speed_frame': "포인터 속도 (Pointer Speed)",
         'profile_frame': "가속 프로필 (Acceleration)",
+        'scroll_frame': "2손가락 스크롤 속도 (Scroll Speed)",
         'ctm_frame': "1손가락 감도 (Sensitivity)",
         'daemon_frame': "3손가락 동적 감도 (Dynamic Sensitivity)",
         'enable_daemon': "동적 조정 활성화",
@@ -68,7 +71,7 @@ class TouchpadTuner:
     def __init__(self, root):
         self.root = root
         # Title will be set in update_ui_text
-        self.root.geometry("500x700")
+        self.root.geometry("500x750") # Increased height
         
         # Handle window close to minimize to tray
         self.root.protocol('WM_DELETE_WINDOW', self.minimize_to_tray)
@@ -90,6 +93,9 @@ class TouchpadTuner:
         # Get current system state for speed (gsettings persists) and touchegg (file persists)
         self.current_speed = self.get_gsettings_speed()
         self.current_threshold, self.current_delay = self.get_touchegg_settings()
+        # Scroll distance is not persistent in system usually, so we rely on config or default
+        # But we can try to read it if we want to sync with current state on first run?
+        # Let's just use the config value or default 15 (standard libinput default)
 
         self.create_widgets()
         
@@ -115,6 +121,7 @@ class TouchpadTuner:
         self.current_gesture_ctm = 0.4
         self.daemon_enabled = True
         self.current_language = 'en'
+        self.current_scroll_dist = 15 # Default libinput value
         
         if os.path.exists(self.config_path):
             try:
@@ -125,6 +132,7 @@ class TouchpadTuner:
                     self.current_gesture_ctm = config.get('gesture_ctm', 0.4)
                     self.daemon_enabled = config.get('daemon_enabled', True)
                     self.current_language = config.get('language', 'en')
+                    self.current_scroll_dist = config.get('scroll_dist', 15)
                 print("Config loaded.")
             except Exception as e:
                 print(f"Error loading config: {e}")
@@ -137,7 +145,8 @@ class TouchpadTuner:
         if not hasattr(self, 'profile_var') or \
            not hasattr(self, 'ctm_scale') or \
            not hasattr(self, 'gesture_ctm_scale') or \
-           not hasattr(self, 'daemon_var'):
+           not hasattr(self, 'daemon_var') or \
+           not hasattr(self, 'scroll_scale'):
             return
 
         config = {
@@ -145,7 +154,8 @@ class TouchpadTuner:
             'normal_ctm': self.ctm_scale.get(),
             'gesture_ctm': self.gesture_ctm_scale.get(),
             'daemon_enabled': self.daemon_var.get(),
-            'language': self.language_var.get()
+            'language': self.language_var.get(),
+            'scroll_dist': int(self.scroll_scale.get())
         }
         
         try:
@@ -160,12 +170,43 @@ class TouchpadTuner:
         self.set_profile(save=False)
         # Apply CTM
         self.set_ctm(self.current_normal_ctm, save=False)
+        # Apply Scroll Distance
+        self.set_scroll_dist(self.current_scroll_dist, save=False)
         # Daemon is handled by start_daemon logic in __init__
 
     # ... (create_tray_icon, minimize_to_tray, show_window, quit_app, toggle_autostart, create/remove autostart, get_touchpad_id, get_gsettings_speed, get_xinput_profile REMOVED/UNUSED?, get_touchegg_settings, set_speed) ...
     
     # We need to modify set_profile and set_ctm to support saving
     
+    def set_scroll_dist(self, val, save=True):
+        # val is from slider (10 to 80). 
+        # Lower distance = Faster scroll. Higher distance = Slower scroll.
+        # Slider: Left (10) -> Fast? Or Left (10) -> Slow?
+        # Usually Left is Low/Slow, Right is High/Fast.
+        # But here, Low Value (10) is Fast Speed. High Value (80) is Slow Speed.
+        # User wants to adjust "Speed". 
+        # Let's make the slider represent "Distance" for now to be precise, or invert it?
+        # "Scroll Speed" label implies Right = Faster.
+        # If Right = Faster, then Right should be Lower Distance.
+        # Let's keep it simple: Slider controls "Pixel Distance" directly, but we label it appropriately or explain it.
+        # Or, we can just use the raw value and let user feel it. 
+        # "Pixel Distance" -> Smaller is faster.
+        # Let's just set the value directly for now and maybe add a tooltip or label update.
+        
+        dist = int(float(val))
+        try:
+            subprocess.run(
+                ['xinput', 'set-prop', self.device_id, 'libinput Scrolling Pixel Distance', str(dist)],
+                check=True
+            )
+            # Update label to show value
+            if hasattr(self, 'scroll_label'):
+                self.scroll_label.config(text=f"Distance: {dist} px (Lower=Faster)")
+                
+            if save: self.save_config()
+        except Exception as e:
+            print(f"Error setting scroll distance: {e}")
+
     def set_profile(self, save=True):
         profile = self.profile_var.get()
         val = "1, 0" if profile == 'adaptive' else "0, 1"
@@ -228,18 +269,79 @@ class TouchpadTuner:
     # ... (stop_daemon, restart_daemon) ...
 
     def create_widgets(self):
-        # ...
+        # Language Selection
+        frame_lang = ttk.Frame(self.root)
+        frame_lang.pack(pady=5, padx=10, fill="x")
         
+        self.lbl_lang = ttk.Label(frame_lang, text="Language")
+        self.lbl_lang.pack(side="left", padx=5)
+        
+        self.language_var = tk.StringVar(value=self.current_language)
+        lang_combo = ttk.Combobox(frame_lang, textvariable=self.language_var, values=['en', 'ja', 'ko'], state="readonly", width=5)
+        lang_combo.pack(side="left")
+        lang_combo.bind("<<ComboboxSelected>>", self.update_ui_text)
+
+        # Speed Control
+        self.frame_speed = ttk.LabelFrame(self.root, text="")
+        self.frame_speed.pack(pady=5, padx=10, fill="x")
+
+        self.speed_label = ttk.Label(self.frame_speed, text=f"Speed: {self.current_speed:.2f}")
+        self.speed_label.pack()
+
+        self.speed_scale = ttk.Scale(
+            self.frame_speed, from_=-1.0, to=1.0, orient='horizontal',
+            command=self.set_speed
+        )
+        self.speed_scale.set(self.current_speed)
+        self.speed_scale.pack(fill="x", padx=10, pady=2)
+
         # Profile Control
-        # ...
-        self.profile_var = tk.StringVar(value=self.current_profile) # Use loaded value
-        # ...
+        self.frame_profile = ttk.LabelFrame(self.root, text="")
+        self.frame_profile.pack(pady=5, padx=10, fill="x")
+
+        self.profile_var = tk.StringVar(value=self.current_profile)
         
-        # CTM Control
-        # ...
-        self.ctm_scale.set(self.current_normal_ctm) # Use loaded value
-        # ...
+        rb_adaptive = ttk.Radiobutton(
+            self.frame_profile, text="Adaptive", 
+            variable=self.profile_var, value='adaptive', command=self.set_profile
+        )
+        rb_adaptive.pack(anchor='w', padx=10)
+
+        rb_flat = ttk.Radiobutton(
+            self.frame_profile, text="Flat", 
+            variable=self.profile_var, value='flat', command=self.set_profile
+        )
+        rb_flat.pack(anchor='w', padx=10)
+
+        # Scroll Speed Control (New)
+        self.frame_scroll = ttk.LabelFrame(self.root, text="")
+        self.frame_scroll.pack(pady=5, padx=10, fill="x")
         
+        self.scroll_label = ttk.Label(self.frame_scroll, text=f"Distance: {self.current_scroll_dist} px")
+        self.scroll_label.pack()
+        
+        # Range 10 (Fast) to 80 (Slow). Default 15.
+        self.scroll_scale = ttk.Scale(
+            self.frame_scroll, from_=10, to=80, orient='horizontal',
+            command=self.set_scroll_dist
+        )
+        self.scroll_scale.set(self.current_scroll_dist)
+        self.scroll_scale.pack(fill="x", padx=10, pady=2)
+
+        # CTM Control (Global Sensitivity)
+        self.frame_ctm = ttk.LabelFrame(self.root, text="")
+        self.frame_ctm.pack(pady=5, padx=10, fill="x")
+        
+        self.ctm_label = ttk.Label(self.frame_ctm, text="Multiplier: 1.00")
+        self.ctm_label.pack()
+        
+        self.ctm_scale = ttk.Scale(
+            self.frame_ctm, from_=0.1, to=3.0, orient='horizontal',
+            command=self.set_ctm
+        )
+        self.ctm_scale.set(self.current_normal_ctm)
+        self.ctm_scale.pack(fill="x", padx=10, pady=2)
+
         # Daemon
         # ...
         self.daemon_var = tk.BooleanVar(value=self.daemon_enabled) # Use loaded value
@@ -544,6 +646,7 @@ Comment=Touchpad sensitivity and gesture tuner
         self.root.title(self.get_text('title'))
         self.frame_speed.config(text=self.get_text('speed_frame'))
         self.frame_profile.config(text=self.get_text('profile_frame'))
+        self.frame_scroll.config(text=self.get_text('scroll_frame'))
         self.frame_ctm.config(text=self.get_text('ctm_frame'))
         self.frame_daemon.config(text=self.get_text('daemon_frame'))
         self.chk_daemon.config(text=self.get_text('enable_daemon'))
@@ -606,6 +709,21 @@ Comment=Touchpad sensitivity and gesture tuner
             variable=self.profile_var, value='flat', command=self.set_profile
         )
         rb_flat.pack(anchor='w', padx=10)
+
+        # Scroll Speed Control (New)
+        self.frame_scroll = ttk.LabelFrame(self.root, text="")
+        self.frame_scroll.pack(pady=5, padx=10, fill="x")
+        
+        self.scroll_label = ttk.Label(self.frame_scroll, text=f"Distance: {self.current_scroll_dist} px")
+        self.scroll_label.pack()
+        
+        # Range 10 (Fast) to 80 (Slow). Default 15.
+        self.scroll_scale = ttk.Scale(
+            self.frame_scroll, from_=10, to=80, orient='horizontal',
+            command=self.set_scroll_dist
+        )
+        self.scroll_scale.set(self.current_scroll_dist)
+        self.scroll_scale.pack(fill="x", padx=10, pady=2)
 
         # CTM Control (Global Sensitivity)
         self.frame_ctm = ttk.LabelFrame(self.root, text="")
